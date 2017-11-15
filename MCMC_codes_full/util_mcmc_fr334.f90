@@ -1,0 +1,112 @@
+module util_mcmc
+
+use global_fric
+use nrtype
+use nrutil
+use nr_bsstep
+use utilities
+use matutils
+use parameters
+use randn_gen
+use random_gen
+
+implicit none
+
+
+contains 
+
+   
+!---------------------------------------------------------------------------------------------------!
+!---------------------------------------------------------------------------------------------------!
+   
+   function gauss(x,mu,std)
+   
+   real(8)                              :: gauss
+   real(8), dimension(:), intent(in)    :: x, mu
+   real(8), dimension(:,:), intent(in)  :: std
+   real(8), dimension(:,:), allocatable :: cinv
+   real(8)                              :: arg, N, denom, det_s
+   real(8), parameter                   :: pi = 4.d0*atan(1.d0)
+   
+   allocate(cinv(size(std,1),size(std,2)))
+   cinv=invertmat_sym(std)
+   ! Mahalanobis distance for x
+   arg   = -0.5*dot_product(matmul(cinv,x-mu),(x-mu))
+   N     = dble(size(x))
+   det_s = det_sym(std)
+   denom = ((sqrt(2.d0*pi))**N)*det_s
+   gauss = exp(arg)/denom
+   
+   end function gauss
+   
+   !---------------------------------------------------------------------------------------------------!
+   !---------------------------------------------------------------------------------------------------!
+   function corr_uni_rand(x,std) result(outvec)
+   
+   real(8), parameter                   :: pi = 4.d0*atan(1.d0)
+   real(8), dimension(:), intent(in)    :: x
+   real(8), dimension(:,:), intent(in)  :: std
+   real(8), dimension(:,:), allocatable :: corr_BP,corr_SPE,corr_SPEUD
+   real(8), dimension(:), allocatable   :: outvec
+   integer                              :: i,j,info,Ns
+ Ns = size(std,1)
+ ! x must be normally distributed random numbers
+ allocate(corr_SPE(Ns,Ns),corr_BP(Ns,Ns),corr_SPEUD(Ns,Ns),outvec(Ns))
+
+ ! Convert STD matrix to corrcoef
+ do i = 1,Ns
+ 	do j = i,Ns
+		corr_BP(i,j) = std(i,j)/sqrt(std(i,i)*std(j,j))
+		corr_BP(j,i) = corr_BP(i,j)
+	enddo
+ enddo
+ corr_SPE = corr_BP
+ ! adjust correlations for uniforms
+ do i = 1,Ns
+     do j = max(Ns-1,i),Ns
+         if (i /= j) then
+             corr_SPE(i, j) = 2.d0 * sin(pi * corr_BP(i, j) / 6.d0);
+             corr_SPE(j, i) = 2.d0 * sin(pi * corr_BP(j, i) / 6.d0);
+         endif
+     enddo
+ enddo
+
+ ! induce correlation
+ call covtor(corr_SPE,corr_SPEUD,info)
+ outvec = matmul(corr_SPEUD,x);
+ 
+ ! convert to uniform rand
+ outvec = 0.5d0*(1.d0+erf(outvec/sqrt(2.d0)))
+ 
+ end function corr_uni_rand
+ !---------------------------------------------------------------------------------------------------!
+ !---------------------------------------------------------------------------------------------------!
+ function mix_gauss2(p,mu1,std1,mu2,std2,mix_factor) result(pout)
+ !!! Function for generating a parameter proposal from the mixture of two Gaussians with different
+ !!! means and std-s according to a predefined probability, mix_factor, to choose either.
+ implicit none
+ 
+ real(8), dimension(:), intent(in)       :: p
+ real(8), dimension(:), intent(in)       :: mu1, mu2 
+ real(8), dimension(:,:), intent(in)     :: std1, std2
+ real(8), intent(in)                     :: mix_factor 
+ real(8), dimension(size(p))		 :: pout
+ real(8), dimension(size(mu1))           :: mu
+ real(8), dimension(size(mu1),size(mu1)) :: std
+ real(8)                                 :: unirand
+ 
+   pout = p
+   call random_number(unirand)
+   if (unirand.le.mix_factor) then
+	std = std1
+	mu  = mu1
+   else
+	std = std2
+	mu  = mu2
+   endif
+   call nrmrnd(pout,mu,std,'Basic') ! The 'Polar' generation is less robust        
+   end function mix_gauss2
+ !---------------------------------------------------------------------------------------------------!
+ !---------------------------------------------------------------------------------------------------!
+   end module util_mcmc
+   
