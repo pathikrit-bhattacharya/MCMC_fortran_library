@@ -52,7 +52,7 @@ used to impose absolute constraints on parameter values.
 B) matutils.f90 is a module containing various matrix processing utilities using LAPACK. If the user has MKL and threaded LAPACK, most of these routines can be parallelized. A list with brief descriptions follows:
 
 1) function covmat(x, w): calculates covariance matrix of x,
- with optional (frequency) weights in w,
+ with optional (frequency) weights in w,gauss(x,mu,std): Scale a vector x drawn from a standard normal multivariate to a sample drawn from a multivariate gaussian with a mean vector mu and a covriance matrix std.
  returns covariance matrix in covmat.
 2) function emp_covmat(x): calculates the empirical covariance matrix given n-samples of a m-dimensional vector as an nxm matrix
 . Formula from Yan-Bai, 2009 (An Adaptive Directional Metropolis-within-Gibbs algorithm), corrected Yan_Bai's
@@ -69,3 +69,12 @@ B) matutils.f90 is a module containing various matrix processing utilities using
 9) subroutine copylower(x): Copy the lower diagonal from upper diagonal for symmetric x.
 10) subroutine sqrtm(cmat,R,n,INFO): Square Root of a positive semidefinite square matrix by diagonalization.
 11) subroutine linsolve(Amat,solvec, info): Solve a dense, square, linear system using dgesv from LAPACK.
+!-------------------------------------------------------------------------------------------------------------------------------------!
+!-------------------------------------------------------------------------------------------------------------------------------------!
+C) util_mcmc_slip.f90 is a module with a few statistical subroutines, maybe a good idea to keep populating this module with any other
+statistical routine one might need:
+
+1) gauss(x,mu,std): Scale a vector x drawn from a standard normal multivariate to a sample drawn from a multivariate gaussian with a mean vector mu and a standard deviation matrix std.
+2) corr_uni_rand(x,std): Generate a random sample from a correlated multivariate uniform distribution with a pre-specified correlation
+described by a standard deviation matrix std.
+3) mix_gauss2(p,mu1,std1,mu2,std2,mix_factor): Draw random samples from a mixture of two multi-variate gaussian distributions with prameters mu1, std1 and mu2, std2 with a probability mix_factor of drawing from the first and 1-mix_factor of drawing from the second.
