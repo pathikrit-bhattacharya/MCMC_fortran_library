@@ -9,7 +9,8 @@ proposal jumps are then planned based on this covariance structure with
 step size prefixed according to some linear scaling of the covariance
 matrix. The scaling used is exact for large dimensional spaces as long
 as the moves of the proposals are diffusive. The document 'Description
-of using the MCMC code for a rate-state inverse problem.pdf' explains
+of using the MCMC code for a rate-state inverse problem.pdf' (which is really
+the Supplementary Material from Bhattacharya et al. [2015]) explains
 many of the working details of the code. The code also has options for
 setting a-priori constraints on any subset of the parameters. There are
 also options for running non-adaptive chains with no covariance
