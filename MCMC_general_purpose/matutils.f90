@@ -360,29 +360,58 @@ end subroutine sqrtm
 
 !-----------------------------------------------------------------------------------------------------!
 !-----------------------------------------------------------------------------------------------------!
-
 !!! Multithreaded matrix multiplication using Intel MKL library function dgemm
 !!!
  function matmult_MKL(Amat,Bmat) result(C)
 
- real(8), dimension(:,:), intent(in)    :: Amat, Bmat ! Input matrices for the product A*B
- real(8), dimension(:,:), intent(out)   :: C ! Output matrix, C = A*B
- real(8)                                :: alpha, beta ! scalars, dgemm allows for the product C = alpha*A*B + beta*C
- integer 			        :: m, k, n, i, j
+ real(8), dimension(:,:), intent(in)           :: Amat, Bmat ! Input matrices for the product A*B
+ real(8), dimension(size(Amat,1),size(Bmat,2)) :: C ! Output matrix, C = A*B
+ real(8)                                       :: alpha, beta ! scalars, dgemm allows for the product C = alpha*A*B + beta*C
+ integer 			               :: m, k, n
 
  if (size(Amat,2) /= size(Bmat,1)) then
+	write(*,'(A,I4,A,I4)') 'size(Amat,2) = ', size(Amat,2), ', size(Bmat,1) = ', size(Bmat,1)
  	stop 'Matrix multiplication rule violated in C=A*B, ncolA .neq. nrowB' ! Check for valid multiplication
  end if
  m = size(Amat,1); k = size(Amat,2); n = size(Bmat,2) ! Assigning size values
- allocate(C(m,n)) ! Allocate for output
  !----------------------------------------------------------------------------!
  ! DGEMM calculates C = alpha*A*B + beta*C
  !----------------------------------------------------------------------------!
  alpha = 1.d0 ! Unscaled product
  beta  = 0.d0 ! Nothing is being added
  !----------------------------------------------------------------------------!
- CALL DGEMM('N','N',M,N,K,ALPHA,Amat,M,Bmat,K,BETA,C,M)
+ CALL DGEMM('N','N',m,n,k,alpha,Amat,m,Bmat,k,beta,C,m)
  
  end function matmult_MKL
+
+!-----------------------------------------------------------------------------------------------------!
+!-----------------------------------------------------------------------------------------------------!
+!!! Multithreaded matrix vector multiplication using Intel MKL library function dgemm
+!!!
+ function matvec_MKL(Amat,v) result(C)
+
+ real(8), dimension(:,:), intent(in) :: Amat ! Input matrix for the matrix vector product A*v
+ real(8), dimension(:), intent(in)   :: v
+ real(8), dimension(size(Amat,1))    :: C ! Output vector, C = A*v
+ real(8)                             :: alpha, beta ! scalars, dgemm allows for the product C = alpha*A*B + beta*C
+ integer 			     :: m, k, n
+
+ if (size(Amat,2) /= size(v)) then
+	write(*,'(A,I4,A,I4)') 'size(Amat,2) = ', size(Amat,2), ', size(v) = ', size(v)
+ 	stop 'Matrix multiplication rule violated in C=A*B, ncolA .neq. nrowv' ! Check for valid multiplication
+ end if
+ m = size(Amat,1); k = size(Amat,2); n = 1 ! Assigning size values
  !----------------------------------------------------------------------------!
+ ! DGEMM calculates C = alpha*A*B + beta*C
+ !----------------------------------------------------------------------------!
+ alpha = 1.d0 ! Unscaled product
+ beta  = 0.d0 ! Nothing is being added
+ !----------------------------------------------------------------------------!
+ CALL DGEMM('N','N',m,n,k,alpha,Amat,m,v,k,beta,C,m)
+ 
+ end function matvec_MKL
+
+!-----------------------------------------------------------------------------------------------------!
+!-----------------------------------------------------------------------------------------------------!
+
 end module matutils
