@@ -69,6 +69,7 @@ B) matutils.f90 is a module containing various matrix processing utilities using
 9) subroutine copylower(x): Copy the lower diagonal from upper diagonal for symmetric x.
 10) subroutine sqrtm(cmat,R,n,INFO): Square Root of a positive semidefinite square matrix by diagonalization.
 11) subroutine linsolve(Amat,solvec, info): Solve a dense, square, linear system using dgesv from LAPACK.
+12) function matmult_MKL(Amat,Bmat): Multi-threaded matrix mulitplication using the dgemm subroutine from MKL.
 !-------------------------------------------------------------------------------------------------------------------------------------!
 !-------------------------------------------------------------------------------------------------------------------------------------!
 C) util_mcmc_slip.f90 is a module with a few statistical subroutines, maybe a good idea to keep populating this module with any other
