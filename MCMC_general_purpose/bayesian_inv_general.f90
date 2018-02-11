@@ -108,7 +108,8 @@ threshold,thresh_ind,thresh_vec)
 	if (present(threshold)) p_check = 10.d0**p ! Constraint on parameter values
 	
 	chi2p 	    = (rmsep**2.d0)/(se**2.d0)
-	likelihoodp = -0.5d0*(NMcMc-1)*chi2p !! Log likelihood
+	! likelihoodp = -0.5d0*(NMcMc-1)*chi2p !! Log likelihood
+	likelihoodp = -0.5d0*chi2p !! Log likelihood, the proper form, 02/11/2018
 	keep         = 1
 	keep_ind     = 1.d0
 	call init_random_seed()
@@ -245,7 +246,8 @@ threshold,thresh_ind,thresh_vec)
 		endif
 		if(isnan(rmseq)) rmseq = huge(rmseq)
 		chi2q 	    = (rmseq**2.d0)/(se**2.d0)
-		likelihoodq = -0.5d0*(NMcMc-1)*chi2q !! Log likelihood
+		! likelihoodq = -0.5d0*(NMcMc-1)*chi2q !! Log likelihood
+		likelihoodq = -0.5d0*chi2q !! Log likelihood, the proper form, 02/11/2018
 		if (prior==1) then
 			alpha       = min(1.d0,thresh_wt*exp(likelihoodq-likelihoodp)) ! Note thresh_wt is multiplied
 		elseif (prior==2) then
