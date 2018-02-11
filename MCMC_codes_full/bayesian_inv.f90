@@ -97,7 +97,8 @@ subroutine fixedmcmc(p,cov,uni_range,iterate,se,burnin,skip,psw,param,proposal,p
 	if ((present(threshold)) .and. (law=="K") .and. (choose_vc.eq.2)) p_check(NP) = 10**p(NP) ! Constraint on Vc? Store initial value of Vc
 	if ((present(threshold)) .and. ((strain_rate_dep /= 0).or.((fric_law_form == 3).and.(BC_refvel >= 3)))) p_check(NP) = 10**p(NP) ! Constraint on Vstar? Store initial value of Vstar
 	chi2p 	    = (rmsep**2.d0)/(se**2.d0)
-	likelihoodp = -0.5d0*(NMcMc-1)*chi2p !! Log likelihood
+	! likelihoodp = -0.5d0*(NMcMc-1)*chi2p !! Log likelihood
+	likelihoodp = -0.5d0*chi2p !! Log likelihood, the proper form, normalized with respect to sample size
 	keep         = 1
 	keep_ind     = 1.d0
 	call init_random_seed()
@@ -240,7 +241,8 @@ subroutine fixedmcmc(p,cov,uni_range,iterate,se,burnin,skip,psw,param,proposal,p
 		endif
 		if(isnan(rmseq)) rmseq = huge(rmseq)
 		chi2q 	    = (rmseq**2.d0)/(se**2.d0)
-		likelihoodq = -0.5d0*(NMcMc-1)*chi2q !! Log likelihood
+		! likelihoodq = -0.5d0*(NMcMc-1)*chi2q !! Log likelihood
+		likelihoodq = -0.5d0*(NMcMc-1)*chi2q !! Log likelihood, the proper form, normalized with respect to sample size
 		if (prior==1) then
 			alpha       = min(1.d0,thresh_wt*exp(likelihoodq-likelihoodp)) ! Note thresh_wt is multiplied
 		elseif (prior==2) then
