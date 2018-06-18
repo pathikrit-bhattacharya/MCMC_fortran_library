@@ -11,8 +11,8 @@ implicit none
 
 contains
 !--------------------------------------------------------------------------------------------------------------------------------------------------------
-subroutine fixedmcmc(p,func,cov,uni_range,iterate,se,burnin,skip,psw,param,proposal,prior,dir_scaling,acc_req,covar,adapt_covar, &
-threshold,thresh_ind,thresh_vec)
+subroutine fixedmcmc(p,func,cov,uni_range,iterate,se,norm_choice,burnin,skip,psw,param,proposal,prior,dir_scaling,acc_req,covar,adapt_covar, &
+threshold,thresh_ind,thresh_vec,gauss_prior_params)
 
 !! Code for general inversion purposes, no special friction variables here
 ! p: input parameter list, N-tuple vector
@@ -20,12 +20,13 @@ threshold,thresh_ind,thresh_vec)
 ! cov: covariance matrix of the original proposal
 ! iterate: no. of members to be chosen for MCMC
 ! se: Square Error, scalar
+! norm_choice: Choice of either L1 or L2 norm
 ! burnin: no. of initial members to be disregarded for statistics calculation
 ! skip: no. of members to be skipped after burnin for each chosen for statistics calculation
 ! psw: non-zero value for small world proposal, zero for non-small world
 ! param: Integer arguments for parameter scale definition: 1-'Linear', 2-'Logarithmic'
 ! proposal: Integer argument for form of proposal: 1-'Uniform', 2-'Gauss'
-! prior: Form of the prior: 1-'Uniform', 2-'Exponential'
+! prior: Form of the prior: 1-'Uniform', 2-'Exponential', 3-'Log-normal (Gaussian in log space)'
 ! dir_scaling: Yan-Bai, 2009 suggestion to tune covariance of proposal by scaling the size of jumps along PA directions based on a required acc. rate
 ! acc_req: Required accepance rate 
 ! covar: Learn covariance for proposal with a fixed number of samples after discarding burnin (assigned as covmat_len) from an initial chain, logical variable, true/false
@@ -33,22 +34,24 @@ threshold,thresh_ind,thresh_vec)
 ! threshold: Constrain on prior, if ||p_prop||/||p_init|| > threshold => Prior = 0, optional argument
 ! thresh_ind : Vector of indices or positions of the parameters on which the prior constraint is to be applied e.g. if constrain on 1st and 3rd params thresh_ind = [1,3]
 ! thresh_vec: matrix of thresholds, same number of cols as thresh_ind. 2 rows: 1st row-Upper Bound, 2nd row-Lower Bound
+! gauss_prior_params: If prior = 3, then user needs to supply this as an NP+1 long vector containing the NP-mean of the prior and the last element is the scalar std, ALL IN LINEAR SCALE.
 
 	implicit none
 
 	real(8), parameter                          	:: pi = 4.d0*atan(1.d0)
-	real(8), parameter                          	:: mix_factor = 0.75d0 ! If covar = .true., how often to use the updated covariance to propose
+	real(8), parameter                          	:: mix_factor = 0.5d0 ! If covar = .true., how often to use the updated covariance to propose
 	integer, parameter                          	:: covmat_len = 2*NP ! How many accepted proposals to be used for covmat
 	real(8), dimension(:), intent(inout)        	:: p
 	real(8), dimension(:,:), intent(inout)      	:: cov
 	real(8), dimension(:), intent(in)           	:: uni_range
 	real(8), intent(in)                         	:: psw, se, acc_req	
 	logical, intent(in)                         	:: covar
-	integer, intent(in)                         	:: iterate, burnin, skip, proposal, param, prior, dir_scaling
+	integer, intent(in)                         	:: iterate, norm_choice, burnin, skip, proposal, param, prior, dir_scaling
 	logical, intent(in), optional               	:: adapt_covar
 	real(8), intent(in), optional               	:: threshold
 	integer, dimension(:), intent(in), optional 	:: thresh_ind
 	real(8), dimension(:,:), intent(in), optional	:: thresh_vec
+	real(8), dimension(:), intent(in), optional	:: gauss_prior_params
 	INTERFACE
 		FUNCTION func(x)		
 		IMPLICIT NONE
@@ -57,7 +60,7 @@ threshold,thresh_ind,thresh_vec)
 		END FUNCTION func
 	END INTERFACE
 	real(8), dimension(:,:),allocatable         	:: covar_inp, cov_nor, cov_temp, cov_safety, cov_init, std, scal_mat, I_NP
-	real(8), dimension(:), allocatable          	:: p_low, p_upp, p_prop, rand_p, p_loc, p_temp, p_check, p_max_ap
+	real(8), dimension(:), allocatable          	:: p_low, p_low_sw, p_upp, p_upp_sw, p_prop, rand_p, p_loc, p_temp, p_check, p_max_ap
 	real(8), dimension(:), allocatable          	:: p_init, mu_p, lambda, mu_nor, alpha_vec
 	integer, dimension(:), allocatable          	:: counter, count_vec
 	integer                                     	:: i, hist_num, bincnt, j, keep, k, lim, swp, nc, kstep
@@ -66,6 +69,7 @@ threshold,thresh_ind,thresh_vec)
 	real(8), dimension(1)                       	:: temp
 	real(8)                                         :: thresh_wt, kstep_avg_alpha
 	real(8)                                     	:: likelihoodq, likelihoodp, rat_prior, swu, muloc(NP), dyad_vec(NP,1)
+	real(8)                                         :: rat_prior_num,rat_prior_denom, std_prior
 	real(8)                                     	:: rmsep,chi2p,rmseq,chi2q,unirand, p_max, p_min, rebin, lebin, bin
 	real(8)                                     	:: alpha, keep_ind, fac, c_init, Vc_init, c_loc, Vc_loc
 	real(8), dimension(:,:), allocatable        	:: p_mat, p_keep, hist_mat, std_init, std_nor
@@ -81,7 +85,7 @@ threshold,thresh_ind,thresh_vec)
 	std_update = .false. ! To ensure that till the time std is updated (if at all), proposals use the initial std
 	write_cov = 0 ! When covariance matrix is written for the first time
 	allocate(covar_inp(iterate,NP))
-	allocate(p_low(NP),p_upp(NP),p_prop(NP),rand_p(NP), p_temp(NP), p_max_ap(NP), p_check(NP), p_init(NP),mu_nor(NP))
+	allocate(p_low(NP),p_low_sw(NP),p_upp(NP),p_upp_sw(NP),p_prop(NP),rand_p(NP), p_temp(NP), p_max_ap(NP), p_check(NP), p_init(NP),mu_nor(NP))
 	allocate(p_mat(NP+2,iterate),cov_nor(NP,NP),mu_p(NP),lambda(NP),cov_temp(NP,NP),cov_safety(NP,NP),cov_init(NP,NP),std(NP,NP))
 	allocate(std_nor(NP,NP),std_init(NP,NP),scal_mat(NP,NP),I_NP(NP,NP))
 	allocate(alpha_vec(iterate))
@@ -106,9 +110,13 @@ threshold,thresh_ind,thresh_vec)
 	hist_num    = 150
 	rmsep 	    = func(p)
 	if (present(threshold)) p_check = 10.d0**p ! Constraint on parameter values
-	
-	chi2p 	    = (rmsep**2.d0)/(se**2.d0)
-	likelihoodp = -0.5d0*(NMcMc-1)*chi2p !! Log likelihood, the proper argument to Gaussian
+
+	if (norm_choice==2) then	
+		chi2p 	    = (rmsep**2.d0)/(se**2.d0)
+		likelihoodp = -0.5d0*(NMcMc-1)*chi2p !! Log likelihood for L2 norm
+	elseif (norm_choice==1) then
+		likelihoodp = -(NMcMc-1)*rmsep/se !! Log likelihood for L2 norm
+	endif
 	keep         = 1
 	keep_ind     = 1.d0
 	call init_random_seed()
@@ -136,7 +144,7 @@ threshold,thresh_ind,thresh_vec)
 		write(*,*) 'Wrong value of param, values can be either 1 or 2'
 		call ABORT
 	endif
-	lambda = 1.d0/p_init
+	lambda = 1.d0/p_init ! lambda is the rate const. for exponential prior fixed in the code
 	p_mat(:,1)  = (/p_init,keep_ind,rmsep/)
 	kstep_avg_alpha = 0.d0
 !------------------------------------------------------------------------------------------------!
@@ -217,23 +225,46 @@ threshold,thresh_ind,thresh_vec)
 		endif
 	elseif (present(thresh_vec).and.present(thresh_ind)) then
 		if (param==1) p_temp(thresh_ind) = p_prop(thresh_ind)
-		if (param==2) p_temp(thresh_ind) = 10**p_prop(thresh_ind)
+		if (param==2) p_temp(thresh_ind) = 10.d0**p_prop(thresh_ind)
 		if (any(p_temp(thresh_ind)>=thresh_vec(1,:)).or.any(p_temp(thresh_ind)<thresh_vec(2,:))) then
 			thresh_wt = 0.d0
 		endif
 	endif	        	 		
 !---------------------------------------------------------------------------------------------------------------------!
+!		Guan et al., 2006 Small World chain
 !---------------------------------------------------------------------------------------------------------------------!		        	
 		
-		! Small World Proposal to facilitate mixing
+		! Small World Proposal to facilitate mixing, change all parameter scales to linear to ensure proper mixing
 		if (psw>0.d0.and.proposal==2) then
+			if (param==1) then	! Linear parameters no need to transform			
+				p_upp_sw = p_upp
+				p_low_sw = p_low					
+			elseif (param==2) then  ! Logarithmic parameters, transform
+				p_upp_sw = 10.d0**p_upp
+				p_low_sw = 10.d0**p_low
+			endif
+			if (present(thresh_vec).and.present(thresh_ind)) then
+				p_upp_sw(thresh_ind) = thresh_vec(1,:)
+				p_low_sw(thresh_ind) = thresh_vec(2,:)
+			endif	
 			call random_number(swu)
+		! The heart of small world, notice how the random uniform proposal is being done in linear domain
 			if (swu<=psw) then
 				call random_number(rand_p)
-				p_prop = (p_upp - p_low)*rand_p + p_low
+				p_prop = (p_upp_sw - p_low_sw)*rand_p + p_low_sw
 				swp = swp + 1
-			endif			
+				if (param==2) p_prop = log10(p_prop) ! Logarithmic parameters, transform back to log domain
+			endif
+		! The core of small world done			
 		endif
+
+!---------------------------------------------------------------------------------------------------------------------!
+!		End of small world chain
+!---------------------------------------------------------------------------------------------------------------------!	
+
+!---------------------------------------------------------------------------------------------------------------------!
+!		Calculate likelihoods
+!---------------------------------------------------------------------------------------------------------------------!	
 			
 		! Calculating rmse for proposed parameters, constrained if the value is too different from initial pt. by threshold
 		if ((param==1).and.int(thresh_wt)) then
@@ -244,13 +275,40 @@ threshold,thresh_ind,thresh_vec)
 			rmseq       = huge(1.d0) ! If the proposal is not within bounds, why bother computing?
 		endif
 		if(isnan(rmseq)) rmseq = huge(rmseq)
-		chi2q 	    = (rmseq**2.d0)/(se**2.d0)
-		likelihoodq = -0.5d0*(NMcMc-1)*chi2q !! Log likelihood, the proper argument to Gaussian
+
+		if (norm_choice==2) then
+			chi2q 	    = (rmseq**2.d0)/(se**2.d0)
+			likelihoodq = -0.5d0*(NMcMc-1)*chi2q !! Log likelihood for L2 norm
+		elseif (norm_choice==1) then
+			likelihoodq = -(NMcMc-1)*rmseq/se !! Log likelihood for L1 norm
+		endif
+
+!--------------------------------------------------------------------------------------------------------------------------------!
+!		Now calculate alpha, include any priors either as bounds (thresh_wt) or as an informative prior (prior=2 or 3)
+!--------------------------------------------------------------------------------------------------------------------------------!	
+
 		if (prior==1) then
 			alpha       = min(1.d0,thresh_wt*exp(likelihoodq-likelihoodp)) ! Note thresh_wt is multiplied
-		elseif (prior==2) then
-			rat_prior = exp(sum(-lambda*(p_prop-p)))
+		elseif (prior==2) then ! exponential prior
+			if (param==2) then  ! log parameters
+				rat_prior = exp(sum(-lambda*(p_prop-p)))
+			elseif (param==1) then  ! linear parameters
+				rat_prior = exp(sum(-lambda*(log10(p_prop)-log10(p))))
+			endif
 			alpha     = min(1.d0,exp(likelihoodq-likelihoodp)*rat_prior)
+		elseif ((prior==3).and.present(gauss_prior_params)) then ! Gaussian prior, assumes that gauss_prior_params are ALL LINEAR at input
+			! We will set gaussian prior in log space for order of magnitude considerations, std is assumed to be specified as log
+			std_prior = gauss_prior_params(NP+1) ! Convert the input std to linear scale
+			if (param==2) then  ! log parameters
+				rat_prior_num   = exp(-0.5d0*sum((p_prop - log10(gauss_prior_params(1:NP)))**2.d0)/std_prior**2.d0)
+				rat_prior_denom = exp(-0.5d0*sum((p - log10(gauss_prior_params(1:NP)))**2.d0)/std_prior**2.d0)
+				rat_prior       = rat_prior_num/rat_prior_denom
+			elseif (param==1) then ! linear parameters
+				rat_prior_num   = exp(-0.5d0*sum((log10(p_prop) - log10(gauss_prior_params(1:NP)))**2.d0)/std_prior**2.d0)
+				rat_prior_denom = exp(-0.5d0*sum((log10(p) - log10(gauss_prior_params(1:NP)))**2.d0)/std_prior**2.d0)
+				rat_prior       = rat_prior_num/rat_prior_denom
+			endif
+			alpha     = min(1.d0,thresh_wt*exp(likelihoodq-likelihoodp)*rat_prior) ! Note thresh_wt is multiplied
 		endif
 		
 		alpha_vec(i) = alpha ! Put alpha into the vector of alphas
